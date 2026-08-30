@@ -1,0 +1,11 @@
+{
+  "name": "booqable-operator-console",
+  "version": "1.0.0",
+  "description": "Modular rebuild of the Booqable rental dashboard — web and Mobile POS",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "python3 -m http.server 8080"
+  }
+}

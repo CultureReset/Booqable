@@ -2,7 +2,7 @@
 
 A working, clickable reconstruction of the **Booqable back-office dashboard** as a rental
 company's staff actually use it — web (Chrome) and the Mobile Point of Sale — built as a
-single self-contained HTML file with a live in-memory data model behind it.
+set of ES modules over a registry, and bundled into one self-contained page.
 
 This is not a set of screenshots or static mockups. Every screen is driven by the same
 state: reserve an order and the calendar, availability matrix, dashboard counters and
@@ -10,15 +10,26 @@ reports all move with it. Pick an order up on the phone and the web view shows i
 *Picked up*.
 
 ```
-dashboard.html      the whole application — open it in a browser, no build step
+src/                the application — core, schema, modules, data, styles
+build.mjs           zero-dependency bundler
+dashboard.html      built single-file output (open directly, or publish)
+dev.html            loads src/ as native ES modules, no build step
+ARCHITECTURE.md     how the modularity works and where each seam is
 DASHBOARD-MAP.md    the written functionality map: every screen, action and rule
 ```
 
 ## Running it
 
-Open `dashboard.html` in any modern browser. There is no server, no bundler, no install.
-It is also publishable as-is (the file deliberately contains no `<html>`/`<head>`/`<body>`
-wrapper so it can be hosted directly).
+```bash
+node build.mjs                 # rebuild dashboard.html from src/
+open dashboard.html            # no server needed
+
+python3 -m http.server 8080    # then open dev.html — unbundled ES modules
+```
+
+`dashboard.html` is the build output; edit the modules under `src/`, not that file.
+It deliberately contains no `<html>`/`<head>`/`<body>` wrapper so it can be published
+directly as a hosted page.
 
 ## What is in it
 
@@ -60,6 +71,28 @@ Return buttons, and a barcode scanner.
 - **Documents** — generate, preview as the customer sees them, send, e-sign.
 - **Everything writes to the activity log**, and the log is visible on the order and in
   Settings.
+
+## How it is put together
+
+Core knows the name of zero screens. Navigation comes from `Registry.modules()`,
+every `data-act` dispatches through `Registry.runAction`, tables and forms render
+from field schemas, the order workflow is a declarative state machine, and
+availability and money are pipelines of registered rules.
+
+| To change this… | Edit here | …and this follows automatically |
+|---|---|---|
+| Add a screen | `src/modules/<name>.js` | Sidebar entry, route, badge, actions, Blueprint card |
+| Add a field | `src/schema/entities.js` | Table column, form control, document line, CSV export |
+| Change the workflow | `src/schema/lifecycle.js` | Action bar, stepper, guards, POS buttons, Blueprint table |
+| Add a pricing model | `Registry.pricingStrategy()` | Every product's pricing dropdown, all order totals |
+| Add a stock constraint | `Registry.availabilityRule()` | Calendar, product page, shortages, pull sheet |
+| Insert a charge or levy | `Registry.moneyStep()` | Order totals, invoices, the money breakdown |
+| Add a document type | `Registry.documentType()` | Generate buttons, Documents tabs, templates, preview |
+| Add a settings panel | `Registry.panel()` | The settings sidebar and its rendering |
+| Point at a live account | `Store.init(RestAdapter(…))` | Every screen, unchanged |
+
+`ARCHITECTURE.md` has the detail. The **Blueprint** screen inside the app is
+generated from the registry rather than describing it, so it cannot go stale.
 
 ## Design notes
 

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Booqable Operator Console — dev</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="src/styles/01-tokens.css">
+<link rel="stylesheet" href="src/styles/02-shell.css">
+<link rel="stylesheet" href="src/styles/03-data.css">
+<link rel="stylesheet" href="src/styles/04-overlays.css">
+<style>body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+<!--
+  Development entry point: loads src/ as native ES modules, no build step.
+  If this page works, the module boundaries are real — dashboard.html is
+  the same graph run through build.mjs.
+  Serve it (module imports need http://), e.g.:  python3 -m http.server 8080
+-->
+<div id="app"></div>
+<div class="toasts" id="toasts"></div>
+<div id="modal-root"></div>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

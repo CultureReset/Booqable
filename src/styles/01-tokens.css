@@ -1,0 +1,110 @@
+/* ============================================================
+   BOOQABLE OPERATOR CONSOLE — functional rebuild
+   Tokens: light is defined on bare :root, dark redefined twice
+   ============================================================ */
+:root{
+  --ink-900:#0B1220; --ink-800:#131E31; --ink-700:#1E2C43; --ink-600:#2B3B55;
+  --ink-text:#C3D0E0; --ink-text-2:#8496AD; --ink-line:#22304A;
+
+  --canvas:#F3F6FA; --surface:#FFFFFF; --surface-2:#F8FAFC; --surface-3:#EEF2F7;
+  --line:#DEE6EF; --line-strong:#C4D0DE;
+  --text:#15202E; --text-2:#4B5C71; --text-3:#7D8DA0;
+
+  --accent:#0B7285; --accent-600:#095E6E; --accent-700:#074C59;
+  --accent-tint:#E3F0F3; --accent-tint-2:#CFE5EA; --on-accent:#FFFFFF;
+
+  --st-new:#64748B;      --st-new-bg:#EDF1F6;
+  --st-concept:#5B6B80;  --st-concept-bg:#ECF0F5;
+  --st-reserved:#2563EB; --st-reserved-bg:#E6EEFE;
+  --st-started:#A85B06;  --st-started-bg:#FCEFD9;
+  --st-stopped:#15803D;  --st-stopped-bg:#E1F4E8;
+  --st-mixed:#6D28D9;    --st-mixed-bg:#EFE9FD;
+  --st-archived:#8494A6; --st-archived-bg:#F0F3F7;
+  --st-canceled:#B4231C; --st-canceled-bg:#FBE8E7;
+
+  --good:#15803D; --good-bg:#E1F4E8;
+  --warn:#A85B06; --warn-bg:#FCEFD9;
+  --crit:#B4231C; --crit-bg:#FBE8E7;
+  --info:#2563EB; --info-bg:#E6EEFE;
+
+  --seq-1:#E3F0F3; --seq-2:#B9DBE2; --seq-3:#84BECB; --seq-4:#4A9DAF; --seq-5:#0B7285;
+
+  --shadow-1:0 1px 2px rgba(15,32,48,.06), 0 1px 3px rgba(15,32,48,.04);
+  --shadow-2:0 4px 12px rgba(15,32,48,.08), 0 1px 3px rgba(15,32,48,.05);
+  --shadow-3:0 18px 48px rgba(11,24,40,.20), 0 2px 8px rgba(11,24,40,.10);
+
+  --r-sm:5px; --r-md:8px; --r-lg:12px; --r-xl:16px;
+  --sans:"IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --display:"Archivo", var(--sans);
+  --mono:"IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --sidebar-w:236px; --topbar-h:56px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ink-900:#070C15; --ink-800:#0C1421; --ink-700:#16223A; --ink-600:#22314C;
+    --ink-text:#B9C7DA; --ink-text-2:#7688A0; --ink-line:#1A2740;
+    --canvas:#0B121D; --surface:#121B2A; --surface-2:#0F1826; --surface-3:#1A2536;
+    --line:#233145; --line-strong:#33455E;
+    --text:#E4EBF4; --text-2:#A2B2C6; --text-3:#758699;
+    --accent:#31A3B8; --accent-600:#48B6C9; --accent-700:#66C7D7;
+    --accent-tint:#12303A; --accent-tint-2:#17414F; --on-accent:#04222A;
+    --st-new:#94A3B8;      --st-new-bg:#1C2739;
+    --st-concept:#98A7BA;  --st-concept-bg:#1B2536;
+    --st-reserved:#7DA6FF; --st-reserved-bg:#152546;
+    --st-started:#E8A03C;  --st-started-bg:#33240D;
+    --st-stopped:#4ECB7B;  --st-stopped-bg:#0E2C1A;
+    --st-mixed:#B292F5;    --st-mixed-bg:#231A3D;
+    --st-archived:#8494A6; --st-archived-bg:#1A2434;
+    --st-canceled:#F0736A; --st-canceled-bg:#331615;
+    --good:#4ECB7B; --good-bg:#0E2C1A;
+    --warn:#E8A03C; --warn-bg:#33240D;
+    --crit:#F0736A; --crit-bg:#331615;
+    --info:#7DA6FF; --info-bg:#152546;
+    --seq-1:#12303A; --seq-2:#17495A; --seq-3:#1F6B81; --seq-4:#2A8DA6; --seq-5:#43B4CB;
+    --shadow-1:0 1px 2px rgba(0,0,0,.4); --shadow-2:0 4px 14px rgba(0,0,0,.45);
+    --shadow-3:0 18px 48px rgba(0,0,0,.6);
+  }
+}
+:root[data-theme="dark"]{
+  --ink-900:#070C15; --ink-800:#0C1421; --ink-700:#16223A; --ink-600:#22314C;
+  --ink-text:#B9C7DA; --ink-text-2:#7688A0; --ink-line:#1A2740;
+  --canvas:#0B121D; --surface:#121B2A; --surface-2:#0F1826; --surface-3:#1A2536;
+  --line:#233145; --line-strong:#33455E;
+  --text:#E4EBF4; --text-2:#A2B2C6; --text-3:#758699;
+  --accent:#31A3B8; --accent-600:#48B6C9; --accent-700:#66C7D7;
+  --accent-tint:#12303A; --accent-tint-2:#17414F; --on-accent:#04222A;
+  --st-new:#94A3B8;      --st-new-bg:#1C2739;
+  --st-concept:#98A7BA;  --st-concept-bg:#1B2536;
+  --st-reserved:#7DA6FF; --st-reserved-bg:#152546;
+  --st-started:#E8A03C;  --st-started-bg:#33240D;
+  --st-stopped:#4ECB7B;  --st-stopped-bg:#0E2C1A;
+  --st-mixed:#B292F5;    --st-mixed-bg:#231A3D;
+  --st-archived:#8494A6; --st-archived-bg:#1A2434;
+  --st-canceled:#F0736A; --st-canceled-bg:#331615;
+  --good:#4ECB7B; --good-bg:#0E2C1A;
+  --warn:#E8A03C; --warn-bg:#33240D;
+  --crit:#F0736A; --crit-bg:#331615;
+  --info:#7DA6FF; --info-bg:#152546;
+  --seq-1:#12303A; --seq-2:#17495A; --seq-3:#1F6B81; --seq-4:#2A8DA6; --seq-5:#43B4CB;
+  --shadow-1:0 1px 2px rgba(0,0,0,.4); --shadow-2:0 4px 14px rgba(0,0,0,.45);
+  --shadow-3:0 18px 48px rgba(0,0,0,.6);
+}
+
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--canvas);color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+h1,h2,h3,h4{font-family:var(--display);margin:0;text-wrap:balance;letter-spacing:-.012em}
+button,input,select,textarea{font:inherit;color:inherit}
+a{color:var(--accent);text-decoration:none}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--text-2)}
+.dim{color:var(--text-3)}
+.eyebrow{font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--text-3)}
+.row{display:flex;align-items:center;gap:8px}
+.spread{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.grow{flex:1;min-width:0}
+.wrap{display:flex;flex-wrap:wrap;gap:8px}
+.trunc{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hide{display:none!important}
