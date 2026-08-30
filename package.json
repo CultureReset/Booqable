@@ -1,13 +1,23 @@
 {
   "name": "booqable-operator-console",
   "version": "1.0.0",
-  "description": "Modular rebuild of the Booqable rental dashboard — web and Mobile POS",
+  "description": "Modular rebuild of the Booqable rental dashboard \u2014 web and Mobile POS",
   "type": "module",
   "private": true,
   "scripts": {
     "build": "npm run build:web && npm run build:android",
     "build:web": "node build.mjs",
     "build:android": "node build.mjs --entry mobile/main.js --styles mobile/styles --out android.html --title \"Northlight for Android\" --fonts \"family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500\"",
-    "dev": "python3 -m http.server 8080"
+    "dev": "python3 -m http.server 8080",
+    "api": "node server/index.js serve",
+    "db:migrate": "node server/index.js migrate",
+    "db:seed": "node server/index.js seed",
+    "db:reset": "node server/index.js reset",
+    "test:api": "node --test server/test.js",
+    "test:e2e": "node server/e2e.js",
+    "test": "npm run test:api && npm run test:e2e"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
   }
 }

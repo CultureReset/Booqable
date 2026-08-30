@@ -10,21 +10,36 @@ reports all move with it. Pick an order up on the phone and the web view shows i
 *Picked up*.
 
 ```
-src/                the application — core, schema, modules, data, styles
-build.mjs           zero-dependency bundler
-dashboard.html      built single-file output (open directly, or publish)
-dev.html            loads src/ as native ES modules, no build step
+src/                the web dashboard — core, schema, modules, data, styles
+mobile/             the Android app — same domain, Material 3 UI
+server/             Postgres schema, business rules in SQL, HTTP API, tests
+build.mjs           zero-dependency bundler (serves both front ends)
+dashboard.html      built web output      ·  android.html   built Android output
+dev.html            src/ as native ES modules, no build step
 ARCHITECTURE.md     how the modularity works and where each seam is
+ANDROID.md          the 39-screen Android app
+BACKEND.md          the database, the rules in SQL, and what it caught
 DASHBOARD-MAP.md    the written functionality map: every screen, action and rule
 ```
 
 ## Running it
 
 ```bash
-node build.mjs                 # rebuild dashboard.html from src/
+npm run build                  # rebuild dashboard.html and android.html
 open dashboard.html            # no server needed
 
+npm run db:reset && npm run api   # Postgres backend on :4000
+npm test                          # 35 tests against a real database
+
 python3 -m http.server 8080    # then open dev.html — unbundled ES modules
+```
+
+With the API running, point either front end at it from the console:
+
+```js
+await Booqable.useApi({ baseUrl: 'http://localhost:4000',
+                        email: 'maya@northlightrentals.com',
+                        password: 'northlight-dev' })
 ```
 
 `dashboard.html` is the build output; edit the modules under `src/`, not that file.
@@ -89,7 +104,8 @@ availability and money are pipelines of registered rules.
 | Insert a charge or levy | `Registry.moneyStep()` | Order totals, invoices, the money breakdown |
 | Add a document type | `Registry.documentType()` | Generate buttons, Documents tabs, templates, preview |
 | Add a settings panel | `Registry.panel()` | The settings sidebar and its rendering |
-| Point at a live account | `Store.init(RestAdapter(…))` | Every screen, unchanged |
+| Point at the Postgres backend | `Store.init(ApiAdapter(…))` | Every screen, web and Android |
+| Point at a live Booqable account | `Store.init(RestAdapter(…))` | Every screen, unchanged |
 
 `ARCHITECTURE.md` has the detail. The **Blueprint** screen inside the app is
 generated from the registry rather than describing it, so it cannot go stale.

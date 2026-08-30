@@ -899,8 +899,194 @@ const reportOffline = err => onOffline(err);
   return { RestAdapter, onWriteError };
 })();
 
+/* ===== src/core/adapters/api.js ===== */
+const __m_core_adapters_api_6 = (() => {
+  
+/* Adapter for this project's own backend.
+
+   Same interface as MemoryAdapter, so `Store.init(ApiAdapter(...))`
+   moves every screen — web and Android — onto Postgres with no other
+   change. The UI is synchronous, so the adapter keeps a local cache
+   primed by one /api/bootstrap call and writes through optimistically,
+   reconciling with whatever the server returns.
+
+   The important difference from MemoryAdapter: the server can say no.
+   Reserving may fail because someone else took the last unit a
+   millisecond earlier, and that refusal has to reach the user rather
+   than being swallowed. onError() is where that goes. */
+
+const ENTITY_PATHS = {
+  orders: '/api/orders',
+  products: '/api/products',
+  customers: '/api/customers'
+};
+
+function ApiAdapter({ baseUrl = '', token = null, fetchImpl = globalThis.fetch, onError } = {}) {
+  const cache = {};
+  const config = {};
+  let authToken = token;
+
+  const report = onError || (err => console.warn('[api]', err.message));
+
+  async function call(method, path, body) {
+    const res = await fetchImpl(baseUrl + path, {
+      method,
+      headers: {
+        'content-type': 'application/json',
+        ...(authToken ? { authorization: `Bearer ${authToken}` } : {})
+      },
+      body: body === undefined ? undefined : JSON.stringify(body)
+    });
+    let payload = null;
+    try { payload = await res.json(); } catch { /* empty body */ }
+    if (!res.ok) {
+      const err = new Error(payload?.error || `${method} ${path} failed (${res.status})`);
+      err.status = res.status;
+      err.detail = payload?.detail;
+      throw err;
+    }
+    return payload;
+  }
+
+  const adapter = {
+    name: 'postgres-api',
+    baseUrl,
+
+    /* ---- auth ---- */
+    async signIn(email, password) {
+      const out = await call('POST', '/api/auth/signin', { email, password });
+      authToken = out.token;
+      return out;
+    },
+    async signOut() {
+      try { await call('POST', '/api/auth/signout'); } catch { /* already gone */ }
+      authToken = null;
+    },
+    setToken(t) { authToken = t; },
+    token: () => authToken,
+
+    /* ---- prime the cache; the UI reads synchronously afterwards ---- */
+    async prime() {
+      const b = await call('GET', '/api/bootstrap');
+      for (const [k, v] of Object.entries(b)) {
+        if (Array.isArray(v)) cache[k] = v;
+        else config[k] = v;
+      }
+      cache.tagList = [...new Set([
+        ...(cache.products || []).flatMap(p => p.tags || []),
+        ...(cache.customers || []).flatMap(c => c.tags || [])
+      ])];
+      /* things the demo carries that the API does not model yet */
+      cache.providers ||= [];
+      cache.apiKeys ||= [];
+      cache.apps ||= [];
+      cache.storePages ||= [];
+      return adapter;
+    },
+    async refresh() { return adapter.prime(); },
+
+    /* ---- Store interface ---- */
+    collections: () => Object.keys(cache),
+    all(entity) { return cache[entity] || (cache[entity] = []); },
+    get(entity, id) { return adapter.all(entity).find(r => r.id === id) || null; },
+
+    insert(entity, record) {
+      adapter.all(entity).unshift(record);
+      const path = ENTITY_PATHS[entity];
+      if (path) call('POST', path, record).then(saved => {
+        if (saved?.id && saved.id !== record.id) Object.assign(record, saved);
+      }).catch(report);
+      return record;
+    },
+    update(entity, id, patch) {
+      const r = adapter.get(entity, id);
+      if (r) Object.assign(r, patch);
+      const path = ENTITY_PATHS[entity];
+      if (path) call('PATCH', `${path}/${id}`, patch).catch(report);
+      return r;
+    },
+    remove(entity, id) {
+      const list = adapter.all(entity);
+      const i = list.findIndex(r => r.id === id);
+      if (i > -1) list.splice(i, 1);
+      const path = ENTITY_PATHS[entity];
+      if (path) call('DELETE', `${path}/${id}`).catch(report);
+    },
+
+    config(key) { return key === undefined ? config : config[key]; },
+    setConfig(key, value) {
+      if (typeof value === 'object' && !Array.isArray(value) && config[key]) Object.assign(config[key], value);
+      else config[key] = value;
+    },
+
+    /* ---- operations the server owns outright ----
+       These return a promise and can reject; callers must handle it,
+       because "the last camera just went" is a real answer. */
+    availability(productId, from, to, ignoreOrder) {
+      const q = new URLSearchParams({ product: productId, from, to, ...(ignoreOrder ? { ignoreOrder } : {}) });
+      return call('GET', `/api/availability?${q}`).then(r => r.available);
+    },
+    async reserve(orderId) {
+      const order = await call('POST', `/api/orders/${orderId}/reserve`);
+      return adapter.absorbOrder(order);
+    },
+    async pickup(orderId, lines, signature) {
+      return adapter.absorbOrder(await call('POST', `/api/orders/${orderId}/pickup`, { lines, signature }));
+    },
+    async returnItems(orderId, lines, { withhold, note } = {}) {
+      return adapter.absorbOrder(await call('POST', `/api/orders/${orderId}/return`, { lines, withhold, note }));
+    },
+    async setStatus(orderId, action) {
+      return adapter.absorbOrder(await call('POST', `/api/orders/${orderId}/status`, { action }));
+    },
+    async addLine(orderId, line) {
+      const out = await call('POST', `/api/orders/${orderId}/lines`, line);
+      return adapter.absorbOrder(out.order);
+    },
+    async removeLine(orderId, lineId) {
+      return adapter.absorbOrder(await call('DELETE', `/api/orders/${orderId}/lines/${lineId}`));
+    },
+    async takePayment(orderId, payment) {
+      const out = await call('POST', `/api/orders/${orderId}/payments`, payment);
+      if (out.payment) cache.payments.unshift({
+        id: out.payment.id, orderId, amount: payment.amount, method: payment.method,
+        kind: payment.kind, status: out.payment.status, when: out.payment.paidAt
+      });
+      return adapter.absorbOrder(out.order);
+    },
+    async createDocument(orderId, type) {
+      const d = await call('POST', `/api/orders/${orderId}/documents`, { type });
+      cache.documents.unshift({
+        id: d.id, orderId, type: d.docType, number: d.number,
+        status: d.status, date: d.issuedAt, sentTo: d.sentTo, signedBy: d.signedBy
+      });
+      return d;
+    },
+    pullSheet(from, to) {
+      return call('GET', `/api/reports/pull-sheet?${new URLSearchParams({ from, to })}`).then(r => r.rows);
+    },
+    utilisation() {
+      return call('GET', '/api/reports/utilisation').then(r => r.rows);
+    },
+
+    /* keep the cached order in step with the server's version */
+    absorbOrder(order) {
+      if (!order?.id) return order;
+      const list = adapter.all('orders');
+      const i = list.findIndex(o => o.id === order.id);
+      if (i > -1) Object.assign(list[i], order); else list.unshift(order);
+      return order;
+    }
+  };
+
+  return adapter;
+}
+
+  return { ApiAdapter };
+})();
+
 /* ===== src/core/fields.js ===== */
-const __m_core_fields_6 = (() => {
+const __m_core_fields_7 = (() => {
   const { Registry } = __m_core_registry_2;
   const { Store } = __m_core_store_1;
   const { esc, D, titleCase } = __m_core_util_4;
@@ -1084,7 +1270,7 @@ const exportField = (f, rec) => {
 })();
 
 /* ===== src/core/ui.js ===== */
-const __m_core_ui_8 = (() => {
+const __m_core_ui_9 = (() => {
   const { esc, initials } = __m_core_util_4;
 /* Presentational primitives. Every screen composes these instead of
    hand-writing markup, so a change here lands everywhere at once. */
@@ -1202,11 +1388,11 @@ const Modal = {
 })();
 
 /* ===== src/core/app.js ===== */
-const __m_core_app_7 = (() => {
+const __m_core_app_8 = (() => {
   const { $, esc } = __m_core_util_4;
   const { Registry } = __m_core_registry_2;
   const { Store, Data } = __m_core_store_1;
-  const { icon, toast, Modal, avatar } = __m_core_ui_8;
+  const { icon, toast, Modal, avatar } = __m_core_ui_9;
 /* The shell.
 
    It renders chrome and routes, and it knows the name of exactly zero
@@ -1435,7 +1621,7 @@ function boot() {
 })();
 
 /* ===== src/data/seed.js ===== */
-const __m_data_seed_9 = (() => {
+const __m_data_seed_10 = (() => {
   const { uid, pad, hashCode } = __m_core_util_4;
 /* Demo account: an AV / event-equipment rental company.
 
@@ -1530,13 +1716,23 @@ function buildSeed() {
       bundle: ['p_1', 'p_2', 'p_8', 'p_9', 'p_7'], online: true, taxProfile: 'tp_std', variations: [] }
   ];
 
+  /* Real EAN-13s from a running sequence with a check digit. A hash
+     truncated to 9 digits collided on half the catalogue, which makes
+     a scan ambiguous — the database's unique constraint caught it. */
+  let barcodeSeq = 0;
+  const nextBarcode = () => {
+    const body = String(730000000000 + (++barcodeSeq));   // 12 digits, then a check digit
+    const sum = [...body].reduce((acc, d, i) => acc + Number(d) * (i % 2 ? 3 : 1), 0);
+    return body + ((10 - (sum % 10)) % 10);
+  };
+
   const stockItems = [];
   products.filter(p => p.track === 'trackable').forEach(p => {
     for (let i = 1; i <= p.stock; i++) {
       const broken = i === 2 && p.id === 'p_5';
       stockItems.push({
         id: uid('si'), productId: p.id, identifier: `${p.sku}-${pad(i, 3)}`,
-        barcode: 'BQ' + String(Math.abs(hashCode(p.sku + i))).slice(0, 9),
+        barcode: nextBarcode(),
         status: 'in-stock', condition: broken ? 'maintenance' : 'good',
         location: p.location, note: broken ? 'Ballast fan rattle — bench repair' : ''
       });
@@ -1667,8 +1863,13 @@ function buildSeed() {
       { id: 'cpn_3', code: 'SPRING50', kind: 'Fixed', value: 50, uses: 88, limit: 88, active: false, note: 'Expired 05/2026' }
     ],
     pricingStructures: [
-      { id: 'ps_std', name: 'Standard tiered', rows: [{ label: '1 day', mult: 1 }, { label: '2 days', mult: 1.7 }, { label: '3 days', mult: 2.2 }, { label: 'Week (7)', mult: 3.5 }, { label: 'Month (30)', mult: 10 }] },
-      { id: 'ps_wknd', name: 'Weekend special', rows: [{ label: '1 day', mult: 1 }, { label: 'Weekend (Fri–Mon)', mult: 1.5 }, { label: 'Week (7)', mult: 3 }, { label: 'Month (30)', mult: 8 }] }
+      { id: 'ps_std', name: 'Standard tiered', rows: [
+        { label: '1 day', days: 1, mult: 1 }, { label: '2 days', days: 2, mult: 1.7 },
+        { label: '3 days', days: 3, mult: 2.2 }, { label: 'Week (7)', days: 7, mult: 3.5 },
+        { label: 'Month (30)', days: 30, mult: 10 }] },
+      { id: 'ps_wknd', name: 'Weekend special', rows: [
+        { label: '1 day', days: 1, mult: 1 }, { label: 'Weekend (Fri–Mon)', days: 3, mult: 1.5 },
+        { label: 'Week (7)', days: 7, mult: 3 }, { label: 'Month (30)', days: 30, mult: 8 }] }
     ],
     users: [
       { id: 'u_1', name: 'Maya Okonkwo', email: 'maya@northlightrentals.com', role: 'Owner', twofa: true, last: '2 minutes ago', me: true },
@@ -1800,7 +2001,7 @@ function buildSeed() {
 })();
 
 /* ===== src/schema/lifecycle.js ===== */
-const __m_schema_lifecycle_11 = (() => {
+const __m_schema_lifecycle_12 = (() => {
   const { Data, Store } = __m_core_store_1;
   const { sum } = __m_core_util_4;
 /* The order lifecycle as data.
@@ -1941,7 +2142,7 @@ const openOrders = () => Data.orders().filter(o => Lifecycle.state(o.status).hol
 })();
 
 /* ===== src/schema/pricing.js ===== */
-const __m_schema_pricing_12 = (() => {
+const __m_schema_pricing_13 = (() => {
   const { Registry } = __m_core_registry_2;
   const { Data } = __m_core_store_1;
   const { daysBetween, sum } = __m_core_util_4;
@@ -1965,14 +2166,19 @@ function registerPricingStrategies() {
   Registry.pricingStrategy('flat', (product, order) =>
     (product.period === 'once' || product.period === 'order') ? 1 : daysBetween(order.startsAt, order.stopsAt));
 
-  /* tiered multipliers: a 7-day hire is ×3.5, not ×7 */
+  /* Tiered multipliers: a 7-day hire is ×3.5, not ×7.
+     Pick the largest tier whose threshold the duration reaches. Indexing
+     tiers by array position instead silently billed a 4–6 day hire at the
+     month rate once the list ran out — the database caught it. */
   Registry.pricingStrategy('structure', (product, order) => {
     const days = daysBetween(order.startsAt, order.stopsAt);
     const st = Data.pricingStructures().find(s => s.id === product.structure);
-    if (!st) return days;
-    if (days >= 30) return st.rows[st.rows.length - 1].mult;
-    if (days >= 7) return (st.rows.find(r => /Week/i.test(r.label)) || { mult: days }).mult;
-    return (st.rows[Math.min(days - 1, st.rows.length - 1)] || { mult: days }).mult;
+    if (!st || !st.rows.length) return days;
+    const tiers = st.rows
+      .map(r => ({ ...r, days: r.days ?? Number(String(r.label).match(/\d+/)?.[0]) ?? 1 }))
+      .sort((a, b) => a.days - b.days);
+    const fit = tiers.filter(t => t.days <= days).pop();
+    return (fit || tiers[0]).mult;
   });
 }
 
@@ -2073,11 +2279,11 @@ function orderTotals(order) {
 })();
 
 /* ===== src/schema/availability.js ===== */
-const __m_schema_availability_13 = (() => {
+const __m_schema_availability_14 = (() => {
   const { Registry } = __m_core_registry_2;
   const { Data } = __m_core_store_1;
   const { D, overlaps, startOfDay, addDays } = __m_core_util_4;
-  const { Lifecycle } = __m_schema_lifecycle_11;
+  const { Lifecycle } = __m_schema_lifecycle_12;
 /* Availability as a composable pipeline.
 
    Each rule receives a context { product, from, to, ignoreOrderId } and
@@ -2196,14 +2402,14 @@ const utilisationTone = (free, stock) =>
 })();
 
 /* ===== src/schema/entities.js ===== */
-const __m_schema_entities_10 = (() => {
+const __m_schema_entities_11 = (() => {
   const { Registry } = __m_core_registry_2;
   const { Data } = __m_core_store_1;
   const { esc, titleCase } = __m_core_util_4;
-  const { money, fmtD, fmtT, fmtDY, fmtDT } = __m_core_fields_6;
-  const { Lifecycle, isLate, isLateReturn, totalItems, pickedItems, returnedItems } = __m_schema_lifecycle_11;
-  const { orderTotals } = __m_schema_pricing_12;
-  const { availableOnDay, orderShortages } = __m_schema_availability_13;
+  const { money, fmtD, fmtT, fmtDY, fmtDT } = __m_core_fields_7;
+  const { Lifecycle, isLate, isLateReturn, totalItems, pickedItems, returnedItems } = __m_schema_lifecycle_12;
+  const { orderTotals } = __m_schema_pricing_13;
+  const { availableOnDay, orderShortages } = __m_schema_availability_14;
 /* Entity schemas.
 
    One description of each field, consumed by tables, forms, detail
@@ -2471,7 +2677,7 @@ const customerStats = c => {
 })();
 
 /* ===== src/schema/documents.js ===== */
-const __m_schema_documents_14 = (() => {
+const __m_schema_documents_15 = (() => {
   const { Registry } = __m_core_registry_2;
   const { Data, Store } = __m_core_store_1;
   const { uid } = __m_core_util_4;
@@ -2538,7 +2744,7 @@ const documentsFor = orderId => Data.documents().filter(d => d.orderId === order
 })();
 
 /* ===== src/schema/settings.js ===== */
-const __m_schema_settings_15 = (() => {
+const __m_schema_settings_16 = (() => {
   const { Registry } = __m_core_registry_2;
   const { Data } = __m_core_store_1;
 /* Settings as data.
@@ -2698,11 +2904,11 @@ const panelGroups = () => {
 })();
 
 /* ===== src/core/view.js ===== */
-const __m_core_view_17 = (() => {
+const __m_core_view_18 = (() => {
   const { esc } = __m_core_util_4;
   const { Registry } = __m_core_registry_2;
-  const { viewField, editField, exportField, getValue, setValue } = __m_core_fields_6;
-  const { empty } = __m_core_ui_8;
+  const { viewField, editField, exportField, getValue, setValue } = __m_core_fields_7;
+  const { empty } = __m_core_ui_9;
 /* Schema-driven views.
 
    A table is a list of field descriptors plus rows. A form is a list of
@@ -2844,13 +3050,13 @@ function downloadCSV(filename, csv) {
 })();
 
 /* ===== src/modules/calendar.js ===== */
-const __m_modules_calendar_18 = (() => {
+const __m_modules_calendar_19 = (() => {
   const { Registry } = __m_core_registry_2;
   const { Data } = __m_core_store_1;
   const { esc, D, sameDay, startOfDay, addDays } = __m_core_util_4;
-  const { pageHead, chip } = __m_core_ui_8;
-  const { Lifecycle, isLatePickup, isLateReturn } = __m_schema_lifecycle_11;
-  const { availableOnDay, utilisationTone } = __m_schema_availability_13;
+  const { pageHead, chip } = __m_core_ui_9;
+  const { Lifecycle, isLatePickup, isLateReturn } = __m_schema_lifecycle_12;
+  const { availableOnDay, utilisationTone } = __m_schema_availability_14;
 
 
 
@@ -2973,15 +3179,15 @@ void chip; void startOfDay;
 })();
 
 /* ===== src/modules/dashboard.js ===== */
-const __m_modules_dashboard_19 = (() => {
+const __m_modules_dashboard_20 = (() => {
   const { Registry } = __m_core_registry_2;
   const { Data, Store } = __m_core_store_1;
   const { esc, sameDay, startOfDay, addDays, D, sum, uid } = __m_core_util_4;
-  const { icon, tile, card, empty, pageHead, toast, chip } = __m_core_ui_8;
-  const { money0, fmtT, fmtD, fmtRel } = __m_core_fields_6;
-  const { Lifecycle, isLate, isLatePickup, isLateReturn, totalItems, openOrders } = __m_schema_lifecycle_11;
-  const { orderTotals } = __m_schema_pricing_12;
-  const { orderShortages } = __m_schema_availability_13;
+  const { icon, tile, card, empty, pageHead, toast, chip } = __m_core_ui_9;
+  const { money0, fmtT, fmtD, fmtRel } = __m_core_fields_7;
+  const { Lifecycle, isLate, isLatePickup, isLateReturn, totalItems, openOrders } = __m_schema_lifecycle_12;
+  const { orderTotals } = __m_schema_pricing_13;
+  const { orderShortages } = __m_schema_availability_14;
 
 
 
@@ -3119,19 +3325,19 @@ const noteCard = n =>
 })();
 
 /* ===== src/modules/reports.js ===== */
-const __m_modules_reports_16 = (() => {
+const __m_modules_reports_17 = (() => {
   const { Registry } = __m_core_registry_2;
   const { Data } = __m_core_store_1;
   const { esc, D, sum, hashCode, daysBetween } = __m_core_util_4;
-  const { pageHead, tile, icon, empty, tabs } = __m_core_ui_8;
-  const { money, money0, fmtDY } = __m_core_fields_6;
-  const { DataTable } = __m_core_view_17;
-  const { Lifecycle, isLate } = __m_schema_lifecycle_11;
-  const { orderTotals, lineTotal } = __m_schema_pricing_12;
-  const { availableQty } = __m_schema_availability_13;
-  const { availabilityGrid } = __m_modules_calendar_18;
-  const { RANGES, rangeById, inRange } = __m_modules_dashboard_19;
-  const { customerStats } = __m_schema_entities_10;
+  const { pageHead, tile, icon, empty, tabs } = __m_core_ui_9;
+  const { money, money0, fmtDY } = __m_core_fields_7;
+  const { DataTable } = __m_core_view_18;
+  const { Lifecycle, isLate } = __m_schema_lifecycle_12;
+  const { orderTotals, lineTotal } = __m_schema_pricing_13;
+  const { availableQty } = __m_schema_availability_14;
+  const { availabilityGrid } = __m_modules_calendar_19;
+  const { RANGES, rangeById, inRange } = __m_modules_dashboard_20;
+  const { customerStats } = __m_schema_entities_11;
 
 
 
@@ -3354,12 +3560,12 @@ function couponReport() {
 })();
 
 /* ===== src/modules/shell.js ===== */
-const __m_modules_shell_20 = (() => {
+const __m_modules_shell_21 = (() => {
   const { Registry } = __m_core_registry_2;
   const { Data, Store } = __m_core_store_1;
-  const { toast, Modal, banner } = __m_core_ui_8;
+  const { toast, Modal, banner } = __m_core_ui_9;
   const { esc } = __m_core_util_4;
-  const { toCSV, downloadCSV, canDownload, resolveFields } = __m_core_view_17;
+  const { toCSV, downloadCSV, canDownload, resolveFields } = __m_core_view_18;
 /* Cross-cutting actions that belong to the chrome rather than to any
    one screen. Registered like everything else. */
 
@@ -3454,20 +3660,20 @@ Registry.hook('select-all', ({ checked, S }) => {
 })();
 
 /* ===== src/modules/orders.js ===== */
-const __m_modules_orders_21 = (() => {
+const __m_modules_orders_22 = (() => {
   const { Registry } = __m_core_registry_2;
   const { Data, Store } = __m_core_store_1;
   const { esc, uid, D, sum, daysBetween } = __m_core_util_4;
-  const { icon, card, empty, pageHead, toast, chip, avatar, Modal, tabs, banner } = __m_core_ui_8;
-  const { money, fmtD, fmtT, fmtDY, fmtDT, fmtRel } = __m_core_fields_6;
-  const { DataTable, Form } = __m_core_view_17;
-  const { Lifecycle, applyTransition, deriveStatus, isLate, isLateReturn, totalItems, pickedItems, returnedItems } = __m_schema_lifecycle_11;
-  const { orderTotals, lineTotal, lineUnits } = __m_schema_pricing_12;
-  const { orderShortages, availableQty, withShortages } = __m_schema_availability_13;
-  const { createDocument, documentsFor } = __m_schema_documents_14;
-  const { noteCard } = __m_modules_dashboard_19;
-  const { render } = __m_core_app_7;
-  const { setValue } = __m_core_fields_6;
+  const { icon, card, empty, pageHead, toast, chip, avatar, Modal, tabs, banner } = __m_core_ui_9;
+  const { money, fmtD, fmtT, fmtDY, fmtDT, fmtRel } = __m_core_fields_7;
+  const { DataTable, Form } = __m_core_view_18;
+  const { Lifecycle, applyTransition, deriveStatus, isLate, isLateReturn, totalItems, pickedItems, returnedItems } = __m_schema_lifecycle_12;
+  const { orderTotals, lineTotal, lineUnits } = __m_schema_pricing_13;
+  const { orderShortages, availableQty, withShortages } = __m_schema_availability_14;
+  const { createDocument, documentsFor } = __m_schema_documents_15;
+  const { noteCard } = __m_modules_dashboard_20;
+  const { render } = __m_core_app_8;
+  const { setValue } = __m_core_fields_7;
 
 
 
@@ -4221,16 +4427,16 @@ Registry.hook('field-input', ({ scope, key, value }) => {
 })();
 
 /* ===== src/modules/documents.js ===== */
-const __m_modules_documents_22 = (() => {
+const __m_modules_documents_23 = (() => {
   const { Registry } = __m_core_registry_2;
   const { Data, Store } = __m_core_store_1;
   const { esc, D, sum, daysBetween } = __m_core_util_4;
-  const { pageHead, tile, empty, toast, Modal, tabs, icon } = __m_core_ui_8;
-  const { money, fmtDY, fmtT } = __m_core_fields_6;
-  const { DataTable } = __m_core_view_17;
-  const { orderTotals, lineTotal } = __m_schema_pricing_12;
-  const { createDocument } = __m_schema_documents_14;
-  const { logActivity } = __m_modules_orders_21;
+  const { pageHead, tile, empty, toast, Modal, tabs, icon } = __m_core_ui_9;
+  const { money, fmtDY, fmtT } = __m_core_fields_7;
+  const { DataTable } = __m_core_view_18;
+  const { orderTotals, lineTotal } = __m_schema_pricing_13;
+  const { createDocument } = __m_schema_documents_15;
+  const { logActivity } = __m_modules_orders_22;
 
 
 
@@ -4395,19 +4601,19 @@ function preview(d) {
 })();
 
 /* ===== src/modules/customers.js ===== */
-const __m_modules_customers_23 = (() => {
+const __m_modules_customers_24 = (() => {
   const { Registry } = __m_core_registry_2;
   const { Data, Store } = __m_core_store_1;
   const { esc, uid, D, groupBy } = __m_core_util_4;
-  const { pageHead, tile, card, empty, toast, icon, avatar, chip, tabs } = __m_core_ui_8;
-  const { money, money0, fmtDY } = __m_core_fields_6;
-  const { DataTable, Form, FieldList } = __m_core_view_17;
-  const { setValue } = __m_core_fields_6;
-  const { render } = __m_core_app_7;
-  const { customerStats } = __m_schema_entities_10;
-  const { Lifecycle } = __m_schema_lifecycle_11;
-  const { orderTotals } = __m_schema_pricing_12;
-  const { noteCard } = __m_modules_dashboard_19;
+  const { pageHead, tile, card, empty, toast, icon, avatar, chip, tabs } = __m_core_ui_9;
+  const { money, money0, fmtDY } = __m_core_fields_7;
+  const { DataTable, Form, FieldList } = __m_core_view_18;
+  const { setValue } = __m_core_fields_7;
+  const { render } = __m_core_app_8;
+  const { customerStats } = __m_schema_entities_11;
+  const { Lifecycle } = __m_schema_lifecycle_12;
+  const { orderTotals } = __m_schema_pricing_13;
+  const { noteCard } = __m_modules_dashboard_20;
 
 
 
@@ -4581,18 +4787,18 @@ void money; void orderTotals; void groupBy; void render;
 })();
 
 /* ===== src/modules/products.js ===== */
-const __m_modules_products_24 = (() => {
+const __m_modules_products_25 = (() => {
   const { Registry } = __m_core_registry_2;
   const { Data, Store } = __m_core_store_1;
   const { esc, uid, pad, hashCode, addDays, sum } = __m_core_util_4;
-  const { pageHead, tile, card, empty, toast, icon, chip, tabs, banner, Modal } = __m_core_ui_8;
-  const { money, money0, fmtDY, setValue } = __m_core_fields_6;
-  const { DataTable, Form } = __m_core_view_17;
-  const { render } = __m_core_app_7;
-  const { Lifecycle } = __m_schema_lifecycle_11;
-  const { orderTotals, lineTotal, chargeUnits } = __m_schema_pricing_12;
-  const { availableOnDay, availableQty, utilisationTone } = __m_schema_availability_13;
-  const { noteCard } = __m_modules_dashboard_19;
+  const { pageHead, tile, card, empty, toast, icon, chip, tabs, banner, Modal } = __m_core_ui_9;
+  const { money, money0, fmtDY, setValue } = __m_core_fields_7;
+  const { DataTable, Form } = __m_core_view_18;
+  const { render } = __m_core_app_8;
+  const { Lifecycle } = __m_schema_lifecycle_12;
+  const { orderTotals, lineTotal, chargeUnits } = __m_schema_pricing_13;
+  const { availableOnDay, availableQty, utilisationTone } = __m_schema_availability_14;
+  const { noteCard } = __m_modules_dashboard_20;
 
 
 
@@ -4930,13 +5136,13 @@ void orderTotals; void availableQty; void chargeUnits;
 })();
 
 /* ===== src/modules/storefront.js ===== */
-const __m_modules_storefront_25 = (() => {
+const __m_modules_storefront_26 = (() => {
   const { Registry } = __m_core_registry_2;
   const { Data } = __m_core_store_1;
   const { esc } = __m_core_util_4;
-  const { pageHead, card, chip, icon, tabs } = __m_core_ui_8;
-  const { money, fmtRel } = __m_core_fields_6;
-  const { DataTable } = __m_core_view_17;
+  const { pageHead, card, chip, icon, tabs } = __m_core_ui_9;
+  const { money, fmtRel } = __m_core_fields_7;
+  const { DataTable } = __m_core_view_18;
 
 
 
@@ -5088,12 +5294,12 @@ function domain() {
 })();
 
 /* ===== src/modules/apps.js ===== */
-const __m_modules_apps_26 = (() => {
+const __m_modules_apps_27 = (() => {
   const { Registry } = __m_core_registry_2;
   const { Data, Store } = __m_core_store_1;
   const { esc } = __m_core_util_4;
-  const { pageHead, chip, toast } = __m_core_ui_8;
-  const { DataTable } = __m_core_view_17;
+  const { pageHead, chip, toast } = __m_core_ui_9;
+  const { DataTable } = __m_core_view_18;
 
 
 
@@ -5168,16 +5374,16 @@ Registry.module({
 })();
 
 /* ===== src/modules/settings.js ===== */
-const __m_modules_settings_27 = (() => {
+const __m_modules_settings_28 = (() => {
   const { Registry } = __m_core_registry_2;
   const { Data, Store } = __m_core_store_1;
   const { esc, D, uid } = __m_core_util_4;
-  const { pageHead, card, toast, icon, chip, tile, empty } = __m_core_ui_8;
-  const { money, money0, fmtDT, fmtDY, setValue } = __m_core_fields_6;
-  const { DataTable, Form } = __m_core_view_17;
-  const { render } = __m_core_app_7;
-  const { panelGroups } = __m_schema_settings_15;
-  const { taxRateFor } = __m_schema_pricing_12;
+  const { pageHead, card, toast, icon, chip, tile, empty } = __m_core_ui_9;
+  const { money, money0, fmtDT, fmtDY, setValue } = __m_core_fields_7;
+  const { DataTable, Form } = __m_core_view_18;
+  const { render } = __m_core_app_8;
+  const { panelGroups } = __m_schema_settings_16;
+  const { taxRateFor } = __m_schema_pricing_13;
 /* The settings screen renders panels generically from their `kind`.
    There is no per-panel branching: the eighteen panels in
    schema/settings.js are data, and the four renderers below cover them. */
@@ -5451,14 +5657,14 @@ void money; void fmtDY;
 })();
 
 /* ===== src/modules/blueprint.js ===== */
-const __m_modules_blueprint_28 = (() => {
+const __m_modules_blueprint_29 = (() => {
   const { Registry } = __m_core_registry_2;
   const { Store } = __m_core_store_1;
   const { esc } = __m_core_util_4;
-  const { pageHead, card, tile, tabs, banner, chip } = __m_core_ui_8;
-  const { DataTable } = __m_core_view_17;
-  const { Lifecycle } = __m_schema_lifecycle_11;
-  const { panelGroups } = __m_schema_settings_15;
+  const { pageHead, card, tile, tabs, banner, chip } = __m_core_ui_9;
+  const { DataTable } = __m_core_view_18;
+  const { Lifecycle } = __m_schema_lifecycle_12;
+  const { panelGroups } = __m_schema_settings_16;
 /* The Blueprint documents the app by reading the registry, not by
    repeating it. Register a module, a report, a field type or a
    lifecycle transition and it shows up here with no edit — which is
@@ -5748,16 +5954,16 @@ function parity() {
 })();
 
 /* ===== src/modules/pos.js ===== */
-const __m_modules_pos_29 = (() => {
+const __m_modules_pos_30 = (() => {
   const { Registry } = __m_core_registry_2;
   const { Data, Store } = __m_core_store_1;
   const { esc, uid, D, sameDay, addDays } = __m_core_util_4;
-  const { icon, chip, card, toast, banner } = __m_core_ui_8;
-  const { money, fmtD, fmtT } = __m_core_fields_6;
-  const { Lifecycle, deriveStatus, isLate, totalItems } = __m_schema_lifecycle_11;
-  const { orderTotals } = __m_schema_pricing_12;
-  const { orderShortages, availableOnDay } = __m_schema_availability_13;
-  const { logActivity } = __m_modules_orders_21;
+  const { icon, chip, card, toast, banner } = __m_core_ui_9;
+  const { money, fmtD, fmtT } = __m_core_fields_7;
+  const { Lifecycle, deriveStatus, isLate, totalItems } = __m_schema_lifecycle_12;
+  const { orderTotals } = __m_schema_pricing_13;
+  const { orderShortages, availableOnDay } = __m_schema_availability_14;
+  const { logActivity } = __m_modules_orders_22;
 /* The mobile POS is a module like any other — it just declares
    `device`, which puts it in the top-bar device switcher instead of the
    sidebar and lets it own the whole viewport. It reads the same Store
@@ -6047,15 +6253,16 @@ const __m_main_0 = (() => {
   const { Registry } = __m_core_registry_2;
   const { MemoryAdapter } = __m_core_adapters_memory_3;
   const { RestAdapter } = __m_core_adapters_rest_5;
-  const { registerCoreFieldTypes } = __m_core_fields_6;
-  const { boot } = __m_core_app_7;
-  const { buildSeed } = __m_data_seed_9;
-  const { registerEntities } = __m_schema_entities_10;
-  const { registerPricingStrategies, registerMoneySteps } = __m_schema_pricing_12;
-  const { registerAvailabilityRules } = __m_schema_availability_13;
-  const { registerDocumentTypes } = __m_schema_documents_14;
-  const { registerSettingsPanels } = __m_schema_settings_15;
-  const { registerReports } = __m_modules_reports_16;
+  const { ApiAdapter } = __m_core_adapters_api_6;
+  const { registerCoreFieldTypes } = __m_core_fields_7;
+  const { boot } = __m_core_app_8;
+  const { buildSeed } = __m_data_seed_10;
+  const { registerEntities } = __m_schema_entities_11;
+  const { registerPricingStrategies, registerMoneySteps } = __m_schema_pricing_13;
+  const { registerAvailabilityRules } = __m_schema_availability_14;
+  const { registerDocumentTypes } = __m_schema_documents_15;
+  const { registerSettingsPanels } = __m_schema_settings_16;
+  const { registerReports } = __m_modules_reports_17;
 /* Composition root.
 
    This is the only file that knows the whole application exists. Boot
@@ -6063,6 +6270,7 @@ const __m_main_0 = (() => {
    attach a data source, load the screens, start the shell. Swap the
    adapter here to run against a live Booqable account; drop a module
    import to remove a screen. */
+
 
 
 
@@ -6125,11 +6333,26 @@ async function useRest(options) {
   return rest;
 }
 
-globalThis.Booqable = { Store, Registry, MemoryAdapter, RestAdapter, useRest, start };
+/* Point the app at this project's own Postgres backend:
+     await Booqable.useApi({ baseUrl: 'http://localhost:4000',
+                             email: 'maya@northlightrentals.com',
+                             password: 'northlight-dev' })
+   Reads come from the primed cache; reserving, fulfilling and taking
+   payment go to the server, which can refuse. */
+async function useApi({ baseUrl = 'http://localhost:4000', email, password, token } = {}) {
+  const api = ApiAdapter({ baseUrl, token, onError: err => console.warn('[api]', err.message) });
+  if (!token) await api.signIn(email, password);
+  await api.prime();
+  Store.init(api);
+  Store.changed('*');
+  return api;
+}
+
+globalThis.Booqable = { Store, Registry, MemoryAdapter, RestAdapter, ApiAdapter, useRest, useApi, start };
 
 start();
 
-  return { start, useRest };
+  return { start, useRest, useApi };
 })();
 })();
 </script>

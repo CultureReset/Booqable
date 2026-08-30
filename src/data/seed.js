@@ -91,13 +91,23 @@ export function buildSeed() {
       bundle: ['p_1', 'p_2', 'p_8', 'p_9', 'p_7'], online: true, taxProfile: 'tp_std', variations: [] }
   ];
 
+  /* Real EAN-13s from a running sequence with a check digit. A hash
+     truncated to 9 digits collided on half the catalogue, which makes
+     a scan ambiguous — the database's unique constraint caught it. */
+  let barcodeSeq = 0;
+  const nextBarcode = () => {
+    const body = String(730000000000 + (++barcodeSeq));   // 12 digits, then a check digit
+    const sum = [...body].reduce((acc, d, i) => acc + Number(d) * (i % 2 ? 3 : 1), 0);
+    return body + ((10 - (sum % 10)) % 10);
+  };
+
   const stockItems = [];
   products.filter(p => p.track === 'trackable').forEach(p => {
     for (let i = 1; i <= p.stock; i++) {
       const broken = i === 2 && p.id === 'p_5';
       stockItems.push({
         id: uid('si'), productId: p.id, identifier: `${p.sku}-${pad(i, 3)}`,
-        barcode: 'BQ' + String(Math.abs(hashCode(p.sku + i))).slice(0, 9),
+        barcode: nextBarcode(),
         status: 'in-stock', condition: broken ? 'maintenance' : 'good',
         location: p.location, note: broken ? 'Ballast fan rattle — bench repair' : ''
       });
@@ -228,8 +238,13 @@ export function buildSeed() {
       { id: 'cpn_3', code: 'SPRING50', kind: 'Fixed', value: 50, uses: 88, limit: 88, active: false, note: 'Expired 05/2026' }
     ],
     pricingStructures: [
-      { id: 'ps_std', name: 'Standard tiered', rows: [{ label: '1 day', mult: 1 }, { label: '2 days', mult: 1.7 }, { label: '3 days', mult: 2.2 }, { label: 'Week (7)', mult: 3.5 }, { label: 'Month (30)', mult: 10 }] },
-      { id: 'ps_wknd', name: 'Weekend special', rows: [{ label: '1 day', mult: 1 }, { label: 'Weekend (Fri–Mon)', mult: 1.5 }, { label: 'Week (7)', mult: 3 }, { label: 'Month (30)', mult: 8 }] }
+      { id: 'ps_std', name: 'Standard tiered', rows: [
+        { label: '1 day', days: 1, mult: 1 }, { label: '2 days', days: 2, mult: 1.7 },
+        { label: '3 days', days: 3, mult: 2.2 }, { label: 'Week (7)', days: 7, mult: 3.5 },
+        { label: 'Month (30)', days: 30, mult: 10 }] },
+      { id: 'ps_wknd', name: 'Weekend special', rows: [
+        { label: '1 day', days: 1, mult: 1 }, { label: 'Weekend (Fri–Mon)', days: 3, mult: 1.5 },
+        { label: 'Week (7)', days: 7, mult: 3 }, { label: 'Month (30)', days: 30, mult: 8 }] }
     ],
     users: [
       { id: 'u_1', name: 'Maya Okonkwo', email: 'maya@northlightrentals.com', role: 'Owner', twofa: true, last: '2 minutes ago', me: true },

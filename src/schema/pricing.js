@@ -18,14 +18,19 @@ export function registerPricingStrategies() {
   Registry.pricingStrategy('flat', (product, order) =>
     (product.period === 'once' || product.period === 'order') ? 1 : daysBetween(order.startsAt, order.stopsAt));
 
-  /* tiered multipliers: a 7-day hire is ×3.5, not ×7 */
+  /* Tiered multipliers: a 7-day hire is ×3.5, not ×7.
+     Pick the largest tier whose threshold the duration reaches. Indexing
+     tiers by array position instead silently billed a 4–6 day hire at the
+     month rate once the list ran out — the database caught it. */
   Registry.pricingStrategy('structure', (product, order) => {
     const days = daysBetween(order.startsAt, order.stopsAt);
     const st = Data.pricingStructures().find(s => s.id === product.structure);
-    if (!st) return days;
-    if (days >= 30) return st.rows[st.rows.length - 1].mult;
-    if (days >= 7) return (st.rows.find(r => /Week/i.test(r.label)) || { mult: days }).mult;
-    return (st.rows[Math.min(days - 1, st.rows.length - 1)] || { mult: days }).mult;
+    if (!st || !st.rows.length) return days;
+    const tiers = st.rows
+      .map(r => ({ ...r, days: r.days ?? Number(String(r.label).match(/\d+/)?.[0]) ?? 1 }))
+      .sort((a, b) => a.days - b.days);
+    const fit = tiers.filter(t => t.days <= days).pop();
+    return (fit || tiers[0]).mult;
   });
 }
 

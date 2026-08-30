@@ -10,6 +10,7 @@ import { Store } from './core/store.js';
 import { Registry } from './core/registry.js';
 import { MemoryAdapter } from './core/adapters/memory.js';
 import { RestAdapter } from './core/adapters/rest.js';
+import { ApiAdapter } from './core/adapters/api.js';
 import { registerCoreFieldTypes } from './core/fields.js';
 import { boot } from './core/app.js';
 
@@ -67,6 +68,21 @@ export async function useRest(options) {
   return rest;
 }
 
-globalThis.Booqable = { Store, Registry, MemoryAdapter, RestAdapter, useRest, start };
+/* Point the app at this project's own Postgres backend:
+     await Booqable.useApi({ baseUrl: 'http://localhost:4000',
+                             email: 'maya@northlightrentals.com',
+                             password: 'northlight-dev' })
+   Reads come from the primed cache; reserving, fulfilling and taking
+   payment go to the server, which can refuse. */
+export async function useApi({ baseUrl = 'http://localhost:4000', email, password, token } = {}) {
+  const api = ApiAdapter({ baseUrl, token, onError: err => console.warn('[api]', err.message) });
+  if (!token) await api.signIn(email, password);
+  await api.prime();
+  Store.init(api);
+  Store.changed('*');
+  return api;
+}
+
+globalThis.Booqable = { Store, Registry, MemoryAdapter, RestAdapter, ApiAdapter, useRest, useApi, start };
 
 start();
