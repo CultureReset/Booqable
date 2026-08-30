@@ -2814,7 +2814,21 @@ function toCSV(columns, rows, entity) {
   ].join('\n');
 }
 
+/* Saving a file is not available everywhere this page runs — a sandboxed
+   viewer makes `<a download>` silently inert. So the caller is told which
+   path is available rather than being promised a download that never
+   happens. */
+function canDownload() {
+  try {
+    return typeof Blob === 'function'
+      && typeof URL.createObjectURL === 'function'
+      && 'download' in document.createElement('a')
+      && window.top === window.self;      // sandboxed frames drop the save
+  } catch { return false; }
+}
+
 function downloadCSV(filename, csv) {
+  if (!canDownload()) return false;
   try {
     const blob = new Blob([csv], { type: 'text/csv' });
     const a = document.createElement('a');
@@ -2826,7 +2840,7 @@ function downloadCSV(filename, csv) {
   } catch { return false; }
 }
 
-  return { resolveFields, DataTable, Form, Field, applyFieldInput, FieldList, toCSV, downloadCSV };
+  return { resolveFields, DataTable, Form, Field, applyFieldInput, FieldList, toCSV, canDownload, downloadCSV };
 })();
 
 /* ===== src/modules/calendar.js ===== */
@@ -3343,10 +3357,12 @@ function couponReport() {
 const __m_modules_shell_20 = (() => {
   const { Registry } = __m_core_registry_2;
   const { Data, Store } = __m_core_store_1;
-  const { toast } = __m_core_ui_8;
-  const { toCSV, downloadCSV, resolveFields } = __m_core_view_17;
+  const { toast, Modal, banner } = __m_core_ui_8;
+  const { esc } = __m_core_util_4;
+  const { toCSV, downloadCSV, canDownload, resolveFields } = __m_core_view_17;
 /* Cross-cutting actions that belong to the chrome rather than to any
    one screen. Registered like everything else. */
+
 
 
 
@@ -3374,8 +3390,34 @@ Registry.actions({
     const rows = Store.all(entity.id);
     const columns = entity.fields.filter(f => f.export !== false).map(f => f.key);
     const csv = toCSV(resolveFields(columns, entity.id), rows, entity.id);
-    const ok = downloadCSV(`${entity.id}.csv`, csv);
-    toast(ok ? `${rows.length} ${entity.plural.toLowerCase()} exported` : 'Export blocked by the browser', ok ? 'ok' : 'bad');
+    const filename = `${entity.id}.csv`;
+
+    if (canDownload() && downloadCSV(filename, csv)) {
+      return toast(`${rows.length} ${entity.plural.toLowerCase()} exported to ${filename}`);
+    }
+    /* No file save here — hand over the data instead of claiming success. */
+    Modal.open({
+      title: `Export ${entity.plural.toLowerCase()}`, size: 'wide',
+      sub: `${rows.length} rows · ${columns.length} columns · ${filename}`,
+      body: `${banner('info', 'This viewer does not allow pages to save files, so the CSV is here to copy. Columns come from the same field schema the table uses.')}
+        <textarea id="csv-out" readonly style="width:100%;min-height:280px;margin-top:14px;font-family:var(--mono);font-size:11.5px;white-space:pre;overflow:auto">${esc(csv)}</textarea>`,
+      foot: `<button class="btn" data-close-modal>Close</button>
+             <button class="btn primary" data-act="export.copy">Copy CSV</button>`,
+      onMount: root => { const el = root.querySelector('#csv-out'); el.focus(); el.select(); }
+    });
+  },
+
+  'export.copy': async () => {
+    const el = document.querySelector('#csv-out');
+    if (!el) return;
+    el.focus(); el.select();
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(el.value);
+      else if (!document.execCommand('copy')) throw new Error('copy rejected');
+      toast('CSV copied to the clipboard');
+    } catch {
+      toast('Clipboard blocked — the text is selected, press Ctrl/Cmd+C', 'bad');
+    }
   }
 });
 

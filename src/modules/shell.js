@@ -3,8 +3,9 @@
 
 import { Registry } from '../core/registry.js';
 import { Data, Store } from '../core/store.js';
-import { toast } from '../core/ui.js';
-import { toCSV, downloadCSV, resolveFields } from '../core/view.js';
+import { toast, Modal, banner } from '../core/ui.js';
+import { esc } from '../core/util.js';
+import { toCSV, downloadCSV, canDownload, resolveFields } from '../core/view.js';
 
 Registry.actions({
   'shell.menu': ({ S, render }) => { S.sidebarOpen = !S.sidebarOpen; render(); },
@@ -27,8 +28,34 @@ Registry.actions({
     const rows = Store.all(entity.id);
     const columns = entity.fields.filter(f => f.export !== false).map(f => f.key);
     const csv = toCSV(resolveFields(columns, entity.id), rows, entity.id);
-    const ok = downloadCSV(`${entity.id}.csv`, csv);
-    toast(ok ? `${rows.length} ${entity.plural.toLowerCase()} exported` : 'Export blocked by the browser', ok ? 'ok' : 'bad');
+    const filename = `${entity.id}.csv`;
+
+    if (canDownload() && downloadCSV(filename, csv)) {
+      return toast(`${rows.length} ${entity.plural.toLowerCase()} exported to ${filename}`);
+    }
+    /* No file save here — hand over the data instead of claiming success. */
+    Modal.open({
+      title: `Export ${entity.plural.toLowerCase()}`, size: 'wide',
+      sub: `${rows.length} rows · ${columns.length} columns · ${filename}`,
+      body: `${banner('info', 'This viewer does not allow pages to save files, so the CSV is here to copy. Columns come from the same field schema the table uses.')}
+        <textarea id="csv-out" readonly style="width:100%;min-height:280px;margin-top:14px;font-family:var(--mono);font-size:11.5px;white-space:pre;overflow:auto">${esc(csv)}</textarea>`,
+      foot: `<button class="btn" data-close-modal>Close</button>
+             <button class="btn primary" data-act="export.copy">Copy CSV</button>`,
+      onMount: root => { const el = root.querySelector('#csv-out'); el.focus(); el.select(); }
+    });
+  },
+
+  'export.copy': async () => {
+    const el = document.querySelector('#csv-out');
+    if (!el) return;
+    el.focus(); el.select();
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(el.value);
+      else if (!document.execCommand('copy')) throw new Error('copy rejected');
+      toast('CSV copied to the clipboard');
+    } catch {
+      toast('Clipboard blocked — the text is selected, press Ctrl/Cmd+C', 'bad');
+    }
   }
 });
 

@@ -109,7 +109,21 @@ export function toCSV(columns, rows, entity) {
   ].join('\n');
 }
 
+/* Saving a file is not available everywhere this page runs — a sandboxed
+   viewer makes `<a download>` silently inert. So the caller is told which
+   path is available rather than being promised a download that never
+   happens. */
+export function canDownload() {
+  try {
+    return typeof Blob === 'function'
+      && typeof URL.createObjectURL === 'function'
+      && 'download' in document.createElement('a')
+      && window.top === window.self;      // sandboxed frames drop the save
+  } catch { return false; }
+}
+
 export function downloadCSV(filename, csv) {
+  if (!canDownload()) return false;
   try {
     const blob = new Blob([csv], { type: 'text/csv' });
     const a = document.createElement('a');
