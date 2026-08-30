@@ -9,7 +9,8 @@
    local `notesTab` without colliding, exactly as they do under native
    ES modules in dev.html.
 
-   Usage: node build.mjs [--out dashboard.html]
+   Usage: node build.mjs [--entry src/main.js] [--styles src/styles]
+                         [--out dashboard.html] [--title "…"]
 */
 
 import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
@@ -17,10 +18,16 @@ import { dirname, resolve, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
-const ENTRY = resolve(ROOT, 'src/main.js');
-const OUT = process.argv.includes('--out')
-  ? resolve(ROOT, process.argv[process.argv.indexOf('--out') + 1])
-  : resolve(ROOT, 'dashboard.html');
+const arg = (name, fallback) => {
+  const i = process.argv.indexOf('--' + name);
+  return i > -1 ? process.argv[i + 1] : fallback;
+};
+const ENTRY = resolve(ROOT, arg('entry', 'src/main.js'));
+const STYLES = resolve(ROOT, arg('styles', 'src/styles'));
+const OUT = resolve(ROOT, arg('out', 'dashboard.html'));
+const TITLE = arg('title', 'Booqable Operator Console');
+const FONTS = arg('fonts',
+  'family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700');
 
 /* ---------- parse ---------- */
 const IMPORT_NAMED = /^[ \t]*import\s+\{([\s\S]*?)\}\s*from\s*['"]([^'"]+)['"];?[ \t]*$/gm;
@@ -124,16 +131,16 @@ ${m.code}
 }
 
 function styles() {
-  const dir = resolve(ROOT, 'src/styles');
+  const dir = STYLES;
   return readdirSync(dir).filter(f => f.endsWith('.css')).sort()
     .map(f => `/* ===== styles/${f} ===== */\n` + readFileSync(resolve(dir, f), 'utf8'))
     .join('\n');
 }
 
-const html = `<title>Booqable Operator Console</title>
+const html = `<title>${TITLE}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?${FONTS}&display=swap">
 <style>
 ${styles()}
 </style>
@@ -143,7 +150,7 @@ ${styles()}
 <div id="modal-root"></div>
 
 <script>
-/* Booqable Operator Console — built from src/ by build.mjs.
+/* ${TITLE} — built by build.mjs from ${relative(ROOT, ENTRY)}.
    Edit the modules under src/, not this file. */
 (() => {
 ${bundle()}

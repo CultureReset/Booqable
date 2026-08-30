@@ -5,7 +5,9 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "build": "node build.mjs",
+    "build": "npm run build:web && npm run build:android",
+    "build:web": "node build.mjs",
+    "build:android": "node build.mjs --entry mobile/main.js --styles mobile/styles --out android.html --title \"Northlight for Android\" --fonts \"family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500\"",
     "dev": "python3 -m http.server 8080"
   }
 }

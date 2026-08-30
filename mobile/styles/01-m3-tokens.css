@@ -1,0 +1,186 @@
+/* ============================================================
+   MATERIAL 3 — tonal palettes and colour roles
+   Source colour: the Northlight brand teal (#0B7285), expanded
+   into the M3 tonal system. Light is defined on bare :root; dark
+   is redefined under prefers-color-scheme and again under an
+   explicit [data-theme] stamp so the toggle wins both ways.
+   ============================================================ */
+:root{
+  /* ---- tonal palettes ---- */
+  --p0:#000000;  --p10:#001F26; --p20:#00363F; --p30:#004E5A; --p40:#006876;
+  --p50:#008394; --p60:#22A0B2; --p70:#4EBCCE; --p80:#6FD8EB; --p90:#A7EDFF;
+  --p95:#D6F5FF; --p99:#F7FDFF; --p100:#FFFFFF;
+
+  --s10:#051F24; --s20:#1C3439; --s30:#334B50; --s40:#4A6268; --s50:#627B81;
+  --s60:#7B959B; --s70:#96B0B6; --s80:#B1CBD2; --s90:#CDE7EE; --s95:#DBF5FD;
+
+  --t10:#111C34; --t20:#26314A; --t30:#3C4862; --t40:#54607B; --t50:#6C7895;
+  --t60:#8692B0; --t70:#A0ADCB; --t80:#BCC8E7; --t90:#DBE4FF; --t95:#EEF1FF;
+
+  --n6:#0E1415;  --n10:#191C1D; --n20:#2D3132; --n30:#444748; --n40:#5C5F60;
+  --n50:#757778; --n60:#8F9192; --n70:#A9ACAD; --n80:#C5C7C8; --n90:#E0E3E4;
+  --n95:#EFF1F2; --n98:#F5FAFB; --n99:#FAFDFD;
+
+  --nv30:#3F484B; --nv50:#6F797B; --nv60:#899295; --nv80:#BFC8CB; --nv90:#DBE4E7;
+
+  --e10:#410002; --e20:#690005; --e30:#93000A; --e40:#BA1A1A;
+  --e80:#FFB4AB; --e90:#FFDAD6;
+
+  /* ---- light scheme roles ---- */
+  --md-primary:var(--p40);              --md-on-primary:var(--p100);
+  --md-primary-container:var(--p90);    --md-on-primary-container:var(--p10);
+  --md-secondary:var(--s40);            --md-on-secondary:#FFFFFF;
+  --md-secondary-container:var(--s90);  --md-on-secondary-container:var(--s10);
+  --md-tertiary:var(--t40);             --md-on-tertiary:#FFFFFF;
+  --md-tertiary-container:var(--t90);   --md-on-tertiary-container:var(--t10);
+  --md-error:var(--e40);                --md-on-error:#FFFFFF;
+  --md-error-container:var(--e90);      --md-on-error-container:var(--e10);
+
+  --md-surface:var(--n98);              --md-on-surface:var(--n10);
+  --md-surface-variant:var(--nv90);     --md-on-surface-variant:var(--nv30);
+  --md-surface-dim:#D8DEDF;             --md-surface-bright:var(--n99);
+  --md-container-lowest:#FFFFFF;        --md-container-low:#EFF5F6;
+  --md-container:#E9F0F1;               --md-container-high:#E3EAEB;
+  --md-container-highest:#DEE4E5;
+
+  --md-outline:var(--nv50);             --md-outline-variant:var(--nv80);
+  --md-inverse-surface:var(--n20);      --md-inverse-on-surface:var(--n95);
+  --md-inverse-primary:var(--p80);
+  --md-scrim:rgba(0,0,0,.4);
+  --md-shadow:rgba(0,0,0,1);
+
+  /* ---- semantic: rental order statuses, mapped onto M3 containers ---- */
+  --st-concept-bg:var(--md-container-high); --st-concept-fg:var(--nv30);
+  --st-reserved-bg:#DDE1FF;                 --st-reserved-fg:#001551;
+  --st-started-bg:#FFDDB3;                  --st-started-fg:#2A1700;
+  --st-stopped-bg:#A9F0BE;                  --st-stopped-fg:#00210E;
+  --st-mixed-bg:#EFDBFF;                    --st-mixed-fg:#280056;
+  --st-archived-bg:var(--md-container);     --st-archived-fg:var(--nv50);
+  --st-canceled-bg:var(--e90);              --st-canceled-fg:var(--e10);
+
+  /* ---- elevation (M3 = shadow + surface tint) ---- */
+  --el0:none;
+  --el1:0 1px 2px rgba(0,0,0,.30), 0 1px 3px 1px rgba(0,0,0,.15);
+  --el2:0 1px 2px rgba(0,0,0,.30), 0 2px 6px 2px rgba(0,0,0,.15);
+  --el3:0 4px 8px 3px rgba(0,0,0,.15), 0 1px 3px rgba(0,0,0,.30);
+  --el4:0 6px 10px 4px rgba(0,0,0,.15), 0 2px 3px rgba(0,0,0,.30);
+  --el5:0 8px 12px 6px rgba(0,0,0,.15), 0 4px 4px rgba(0,0,0,.30);
+
+  /* ---- shape scale ---- */
+  --sh-xs:4px; --sh-sm:8px; --sh-md:12px; --sh-lg:16px; --sh-xl:28px; --sh-full:999px;
+
+  /* ---- type ---- */
+  --font:"Roboto", "Roboto Flex", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono:"Roboto Mono", ui-monospace, monospace;
+
+  /* ---- motion (M3 emphasized easing) ---- */
+  --ease-emph:cubic-bezier(.2,0,0,1);
+  --ease-standard:cubic-bezier(.2,0,0,1);
+  --ease-decel:cubic-bezier(0,0,0,1);
+  --dur-short:120ms; --dur-med:280ms; --dur-long:450ms;
+
+  /* ---- android chrome ---- */
+  --status-h:28px; --nav-h:24px;
+}
+
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --md-primary:var(--p80);              --md-on-primary:var(--p20);
+    --md-primary-container:var(--p30);    --md-on-primary-container:var(--p90);
+    --md-secondary:var(--s80);            --md-on-secondary:var(--s20);
+    --md-secondary-container:var(--s30);  --md-on-secondary-container:var(--s90);
+    --md-tertiary:var(--t80);             --md-on-tertiary:var(--t20);
+    --md-tertiary-container:var(--t30);   --md-on-tertiary-container:var(--t90);
+    --md-error:var(--e80);                --md-on-error:var(--e20);
+    --md-error-container:var(--e30);      --md-on-error-container:var(--e90);
+
+    --md-surface:var(--n6);               --md-on-surface:var(--n90);
+    --md-surface-variant:var(--nv30);     --md-on-surface-variant:var(--nv80);
+    --md-surface-dim:var(--n6);           --md-surface-bright:#343A3B;
+    --md-container-lowest:#090F10;        --md-container-low:var(--n10);
+    --md-container:#1D2021;               --md-container-high:#272B2C;
+    --md-container-highest:#323535;
+
+    --md-outline:var(--nv60);             --md-outline-variant:var(--nv30);
+    --md-inverse-surface:var(--n90);      --md-inverse-on-surface:var(--n20);
+    --md-inverse-primary:var(--p40);
+    --md-scrim:rgba(0,0,0,.6);
+
+    --st-concept-bg:#2F3335;  --st-concept-fg:var(--nv80);
+    --st-reserved-bg:#28306B; --st-reserved-fg:#DDE1FF;
+    --st-started-bg:#4A3116;  --st-started-fg:#FFDDB3;
+    --st-stopped-bg:#0C4A25;  --st-stopped-fg:#A9F0BE;
+    --st-mixed-bg:#3D2260;    --st-mixed-fg:#EFDBFF;
+    --st-archived-bg:#242829; --st-archived-fg:var(--nv60);
+    --st-canceled-bg:var(--e30); --st-canceled-fg:var(--e90);
+  }
+}
+:root[data-theme="dark"]{
+  --md-primary:var(--p80);              --md-on-primary:var(--p20);
+  --md-primary-container:var(--p30);    --md-on-primary-container:var(--p90);
+  --md-secondary:var(--s80);            --md-on-secondary:var(--s20);
+  --md-secondary-container:var(--s30);  --md-on-secondary-container:var(--s90);
+  --md-tertiary:var(--t80);             --md-on-tertiary:var(--t20);
+  --md-tertiary-container:var(--t30);   --md-on-tertiary-container:var(--t90);
+  --md-error:var(--e80);                --md-on-error:var(--e20);
+  --md-error-container:var(--e30);      --md-on-error-container:var(--e90);
+
+  --md-surface:var(--n6);               --md-on-surface:var(--n90);
+  --md-surface-variant:var(--nv30);     --md-on-surface-variant:var(--nv80);
+  --md-surface-dim:var(--n6);           --md-surface-bright:#343A3B;
+  --md-container-lowest:#090F10;        --md-container-low:var(--n10);
+  --md-container:#1D2021;               --md-container-high:#272B2C;
+  --md-container-highest:#323535;
+
+  --md-outline:var(--nv60);             --md-outline-variant:var(--nv30);
+  --md-inverse-surface:var(--n90);      --md-inverse-on-surface:var(--n20);
+  --md-inverse-primary:var(--p40);
+  --md-scrim:rgba(0,0,0,.6);
+
+  --st-concept-bg:#2F3335;  --st-concept-fg:var(--nv80);
+  --st-reserved-bg:#28306B; --st-reserved-fg:#DDE1FF;
+  --st-started-bg:#4A3116;  --st-started-fg:#FFDDB3;
+  --st-stopped-bg:#0C4A25;  --st-stopped-fg:#A9F0BE;
+  --st-mixed-bg:#3D2260;    --st-mixed-fg:#EFDBFF;
+  --st-archived-bg:#242829; --st-archived-fg:var(--nv60);
+  --st-canceled-bg:var(--e30); --st-canceled-fg:var(--e90);
+}
+
+/* Material You: a second source colour, as Android 12+ would extract
+   from the user's wallpaper. Toggled by [data-dynamic]. */
+:root[data-dynamic="violet"]{
+  --md-primary:#6750A4; --md-on-primary:#FFFFFF;
+  --md-primary-container:#EADDFF; --md-on-primary-container:#21005D;
+  --md-secondary:#625B71; --md-secondary-container:#E8DEF8; --md-on-secondary-container:#1D192B;
+  --md-tertiary:#7D5260; --md-tertiary-container:#FFD8E4; --md-on-tertiary-container:#31111D;
+  --md-surface:#FEF7FF; --md-on-surface:#1D1B20;
+  --md-container-lowest:#FFFFFF; --md-container-low:#F7F2FA; --md-container:#F3EDF7;
+  --md-container-high:#ECE6F0; --md-container-highest:#E6E0E9;
+  --md-outline:#79747E; --md-outline-variant:#CAC4D0; --md-inverse-primary:#D0BCFF;
+}
+:root[data-dynamic="violet"][data-theme="dark"],
+:root[data-dynamic="violet"]:not([data-theme="light"]) {
+  /* dark Material You is applied by the same rule set below */
+}
+@media (prefers-color-scheme: dark){
+  :root[data-dynamic="violet"]:not([data-theme="light"]){
+    --md-primary:#D0BCFF; --md-on-primary:#381E72;
+    --md-primary-container:#4F378B; --md-on-primary-container:#EADDFF;
+    --md-secondary:#CCC2DC; --md-secondary-container:#4A4458; --md-on-secondary-container:#E8DEF8;
+    --md-tertiary:#EFB8C8; --md-tertiary-container:#633B48; --md-on-tertiary-container:#FFD8E4;
+    --md-surface:#141218; --md-on-surface:#E6E0E9;
+    --md-container-lowest:#0F0D13; --md-container-low:#1D1B20; --md-container:#211F26;
+    --md-container-high:#2B2930; --md-container-highest:#36343B;
+    --md-outline:#938F99; --md-outline-variant:#49454F; --md-inverse-primary:#6750A4;
+  }
+}
+:root[data-dynamic="violet"][data-theme="dark"]{
+  --md-primary:#D0BCFF; --md-on-primary:#381E72;
+  --md-primary-container:#4F378B; --md-on-primary-container:#EADDFF;
+  --md-secondary:#CCC2DC; --md-secondary-container:#4A4458; --md-on-secondary-container:#E8DEF8;
+  --md-tertiary:#EFB8C8; --md-tertiary-container:#633B48; --md-on-tertiary-container:#FFD8E4;
+  --md-surface:#141218; --md-on-surface:#E6E0E9;
+  --md-container-lowest:#0F0D13; --md-container-low:#1D1B20; --md-container:#211F26;
+  --md-container-high:#2B2930; --md-container-highest:#36343B;
+  --md-outline:#938F99; --md-outline-variant:#49454F; --md-inverse-primary:#6750A4;
+}
